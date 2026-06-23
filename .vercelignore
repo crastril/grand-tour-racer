@@ -1,0 +1,9 @@
+sprites/kenney_car-kit/
+sprites/kenney_racing-kit/
+sprites/kenney_city-kit-roads/
+.claude/
+__pycache__/
+*.pyc
+geo/
+render_sprites.py
+bake-sprites.html
