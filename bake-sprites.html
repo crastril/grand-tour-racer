@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Bake top-down sprites — depuis les modèles 3D Kenney</title>
+<style>
+  body { margin:0; font-family:system-ui,"Segoe UI",sans-serif; background:#0d1620; color:#e6edf3; }
+  header { padding:18px 22px; background:#0a1018; border-bottom:1px solid #1d2b3a; }
+  h1 { margin:0; font-size:20px; color:#ffd34d; }
+  header p { margin:6px 0 0; font-size:13px; opacity:.8; }
+  .wrap { display:flex; flex-wrap:wrap; gap:20px; padding:22px; }
+  .col { flex:1 1 340px; }
+  #drop {
+    border:3px dashed #2c5870; border-radius:14px; padding:34px 18px; text-align:center;
+    background:#0e1c28; transition:.15s; cursor:pointer;
+  }
+  #drop.hot { border-color:#ffd34d; background:#15293a; }
+  #drop b { color:#9fd4ff; }
+  .row { display:flex; align-items:center; gap:10px; margin:12px 0; font-size:14px; }
+  .row label { flex:0 0 150px; opacity:.85; }
+  input[type=range]{ flex:1; }
+  input[type=number]{ width:74px; background:#0e1c28; color:#e6edf3; border:1px solid #2c5870; border-radius:6px; padding:5px; }
+  button {
+    background:#ffd34d; color:#06131e; font-weight:bold; border:0; border-radius:8px;
+    padding:11px 18px; cursor:pointer; font-size:15px;
+  }
+  button:disabled { opacity:.4; cursor:default; }
+  #view { background:#0e1c28; border:1px solid #1d2b3a; border-radius:12px; width:100%; aspect-ratio:1; }
+  canvas { display:block; width:100%; height:100%; image-rendering:auto; }
+  pre { background:#0a1018; border:1px solid #1d2b3a; border-radius:8px; padding:12px; font-size:12px; overflow:auto; white-space:pre-wrap; }
+  .note { font-size:12px; opacity:.7; line-height:1.6; }
+  .ok { color:#8be9a8; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎨 Bake top-down sprites</h1>
+  <p>Glisse un modèle <b>.glb</b> (ex. <code>sprites/kenney_racing-kit/Models/GLB format/raceCarRed.glb</code>),
+     règle, puis télécharge la sprite sheet. Nécessite une connexion (three.js via CDN).</p>
+</header>
+
+<div class="wrap">
+  <div class="col">
+    <div id="drop">📦 <b>Glisse un .glb ici</b><br><span class="note">(ou clique pour choisir un fichier)</span>
+      <input type="file" id="file" accept=".glb,.gltf" hidden>
+    </div>
+
+    <div class="row"><label>Inclinaison caméra</label>
+      <input type="range" id="tilt" min="0" max="45" value="28"><span id="tiltv">28°</span></div>
+    <div class="row note">0° = vue zénithale pure (pour tuiles de route). ~25–30° = look « 3D » (pour voitures).</div>
+
+    <div class="row"><label>Nombre d'angles</label>
+      <input type="number" id="frames" value="36" min="1" max="72"></div>
+    <div class="row"><label>Colonnes / grille</label>
+      <input type="number" id="cols" value="6" min="1" max="12"></div>
+    <div class="row"><label>Taille cellule (px)</label>
+      <input type="number" id="cell" value="160" min="48" max="512"></div>
+    <div class="row"><label>Rotation frame 0 (°)</label>
+      <input type="range" id="yaw0" min="0" max="360" value="0"><span id="yaw0v">0°</span></div>
+
+    <div class="row">
+      <button id="bake" disabled>⬇ Bake &amp; télécharger</button>
+      <span id="status" class="note"></span>
+    </div>
+    <p class="note">Le téléchargement sort un PNG transparent. Renomme-le (ex. <b>f1.png</b>), place-le dans
+       <b>sprites/</b>, puis colle la config ci-dessous dans <b>index.html</b> (objet <code>SPRITES</code>).</p>
+  </div>
+
+  <div class="col">
+    <div id="view"><canvas id="preview"></canvas></div>
+    <p class="note">Aperçu : le modèle tourne. Si le nez ne pointe pas « vers le haut » à l'angle 0,
+       ajuste « Rotation frame 0 », ou bien plus tard <code>dir</code>/<code>base</code> dans le jeu.</p>
+    <pre id="cfg">// la config SPRITES apparaîtra ici après le bake</pre>
+  </div>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const $ = id => document.getElementById(id);
+const previewCanvas = $('preview');
+let renderer, scene, camera, model, modelName='sprite';
+
+function initThree(){
+  renderer = new THREE.WebGLRenderer({ canvas: previewCanvas, antialias:true, alpha:true, preserveDrawingBuffer:true });
+  renderer.setClearColor(0x000000, 0);
+  renderer.setPixelRatio(1);
+  scene = new THREE.Scene();
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x404858, 1.1));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.7);
+  sun.position.set(-4, 9, 5);
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0x88aaff, 0.4);
+  fill.position.set(5, 4, -4);
+  scene.add(fill);
+}
+initThree();
+
+function fitCameraToModel(){
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  model.position.sub(center);                 // center at origin
+  const f = Math.max(size.x, size.y, size.z) * 0.62;
+  camera = new THREE.OrthographicCamera(-f, f, f, -f, 0.01, 1000);
+  updateCamera();
+}
+function updateCamera(){
+  if(!camera) return;
+  const th = (+$('tilt').value) * Math.PI/180;   // tilt from vertical
+  const d = 100;
+  camera.position.set(0, d*Math.cos(th), d*Math.sin(th));
+  camera.up.set(0, 0, -1);
+  camera.lookAt(0, 0, 0);
+}
+
+const loader = new GLTFLoader();
+function loadGLB(arrayBuffer, name){
+  loader.parse(arrayBuffer, '', (gltf)=>{
+    if(model) scene.remove(model);
+    model = gltf.scene;
+    model.traverse(o=>{ if(o.isMesh){ o.material && (o.material.metalness = Math.min(o.material.metalness??0,0.4)); } });
+    scene.add(model);
+    fitCameraToModel();
+    modelName = name.replace(/\.(glb|gltf)$/i,'');
+    $('bake').disabled = false;
+    $('status').textContent = 'Chargé : '+name;
+  }, (err)=>{ $('status').textContent = 'Erreur de chargement : '+err; });
+}
+
+// drag & drop + file pick
+const drop = $('drop'), fileInput = $('file');
+drop.addEventListener('click', ()=> fileInput.click());
+fileInput.addEventListener('change', e=>{ if(e.target.files[0]) readFile(e.target.files[0]); });
+['dragenter','dragover'].forEach(ev=> drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.add('hot'); }));
+['dragleave','drop'].forEach(ev=> drop.addEventListener(ev, e=>{ e.preventDefault(); drop.classList.remove('hot'); }));
+drop.addEventListener('drop', e=>{ const f=e.dataTransfer.files[0]; if(f) readFile(f); });
+function readFile(f){ const r=new FileReader(); r.onload=()=>loadGLB(r.result, f.name); r.readAsArrayBuffer(f); }
+
+// live spin preview
+let spin=0;
+function animate(){
+  requestAnimationFrame(animate);
+  updateCamera();
+  if(model && camera){
+    model.rotation.y = spin + (+$('yaw0').value)*Math.PI/180;
+    spin += 0.012;
+    const s = previewCanvas.clientWidth;
+    if(renderer.domElement.width !== s){ renderer.setSize(s, s, false);
+      const f = camera.right; camera.updateProjectionMatrix(); }
+    renderer.render(scene, camera);
+  }
+}
+animate();
+
+$('tilt').addEventListener('input', ()=> $('tiltv').textContent = $('tilt').value+'°');
+$('yaw0').addEventListener('input', ()=> $('yaw0v').textContent = $('yaw0').value+'°');
+
+// bake to sprite sheet
+$('bake').addEventListener('click', ()=>{
+  const N = Math.max(1, +$('frames').value|0);
+  const cols = Math.max(1, +$('cols').value|0);
+  const rows = Math.ceil(N/cols);
+  const cell = Math.max(48, +$('cell').value|0);
+  const base = (+$('yaw0').value)*Math.PI/180;
+
+  renderer.setSize(cell, cell, false);
+  camera.updateProjectionMatrix();
+
+  const sheet = document.createElement('canvas');
+  sheet.width = cols*cell; sheet.height = rows*cell;
+  const sctx = sheet.getContext('2d');
+
+  for(let i=0;i<N;i++){
+    model.rotation.y = base + i*(2*Math.PI/N);
+    renderer.render(scene, camera);
+    const col = i%cols, row = Math.floor(i/cols);
+    sctx.drawImage(renderer.domElement, col*cell, row*cell, cell, cell);
+  }
+
+  // download
+  sheet.toBlob(blob=>{
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download = modelName+'_sheet.png';
+    a.click();
+    $('status').innerHTML = '<span class="ok">✓ téléchargé : '+a.download+'</span>';
+  }, 'image/png');
+
+  // config snippet
+  const key = /race|formula|f1|kart/i.test(modelName) ? 'f1' : 'mustang';
+  $('cfg').textContent =
+`// dans index.html -> objet SPRITES :
+${key}: { src:"sprites/${modelName}_sheet.png", frames:${N}, cols:${cols}, rows:${rows}, dir:1, base:0, dw:24, dh:40 },
+
+// si la voiture tourne à l'envers -> dir:-1
+// si l'orientation est décalée    -> ajuste base (ex. base:1.5708 pour +90°)
+// taille à l'écran                -> dw / dh`;
+
+  // restore preview size next frame (animate() handles it)
+});
+</script>
+</body>
+</html>

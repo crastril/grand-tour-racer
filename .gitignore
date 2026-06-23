@@ -1,0 +1,12 @@
+# Raw Kenney 3D model kits — only needed to (re)bake sprites, not at runtime.
+# The baked sprite sheets are inlined into index.html. Re-download from kenney.nl (CC0).
+sprites/kenney_car-kit/
+sprites/kenney_racing-kit/
+sprites/kenney_city-kit-roads/
+
+# tooling / local
+.claude/
+.vercel/
+__pycache__/
+*.pyc
+geo/
