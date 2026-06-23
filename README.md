@@ -3,7 +3,7 @@
 A relaxing, addictive top-down racer in a single self-contained HTML file. Cruise the
 coast in a yellow sports car, or chase the perfect lap on faithfully recreated F1 circuits.
 
-**Play:** open `index.html`, or visit the deployed site.
+**Play:** [grand-tour-racer.vercel.app](https://grand-tour-racer.vercel.app) — or open `index.html` locally.
 
 ## Controls
 - **Touch / mouse:** press and drag **left–right** to steer.
