@@ -10,3 +10,5 @@ sprites/kenney_city-kit-roads/
 __pycache__/
 *.pyc
 geo/
+
+.vercel
