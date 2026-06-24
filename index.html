@@ -93,6 +93,10 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 const TOP=272, TOP_OFF=96, ENGINE=0.95, CORNER_SCRUB=0.95, UNDERSTEER=0.30,
       WALL_HIT=0.42, MIN_SPEED=26, TURN=2.45, KMH=0.91;
 const DRIFT_START=0.22, SMOKE_RATE=70;
+// touch/mouse steering feel (keyboard is unaffected)
+const STEER_TRAVEL=210;     // px of finger travel for full lock (bigger = calmer)
+const STEER_DEADZONE=0.06;  // ignore tiny movements near where you pressed
+const STEER_EXPO=2.2;       // >1 = gentle near centre, fine control for light moves
 const ROAD_HALF=34, BEACH_W=26, WALL_PAD=16, INLAND=900;
 const CAR_LEN=30;                 // world length cars are scaled to
 const CAM_BACK=92, CAM_HEIGHT=74, CAM_AHEAD=120, CAM_LERP=4.0, CAM_FOV=55;
@@ -253,9 +257,14 @@ const smokePool=[]; for(let i=0;i<60;i++){ const s=new THREE.Sprite(new THREE.Sp
 let smokeAcc=0, smokeNext=0;
 
 /* ===================== input ===================== */
-let steerTarget=0, pointerActive=false, dragStartX=0; const MAXDRAG=110; let keyL=false,keyR=false;
-stage.addEventListener("pointerdown",e=>{ pointerActive=true; dragStartX=e.clientX; });
-stage.addEventListener("pointermove",e=>{ if(!pointerActive)return; steerTarget=Math.max(-1,Math.min(1,(e.clientX-dragStartX)/MAXDRAG)); });
+let steerTarget=0, pointerActive=false, dragStartX=0; let keyL=false,keyR=false;
+function applyPointer(dx){
+  let v=Math.min(1, Math.abs(dx)/STEER_TRAVEL); const s=Math.sign(dx);
+  v = v<=STEER_DEADZONE ? 0 : (v-STEER_DEADZONE)/(1-STEER_DEADZONE); // dead zone near press point
+  steerTarget = s*Math.pow(v, STEER_EXPO);                          // gentle near centre
+}
+stage.addEventListener("pointerdown",e=>{ pointerActive=true; dragStartX=e.clientX; steerTarget=0; });
+stage.addEventListener("pointermove",e=>{ if(pointerActive) applyPointer(e.clientX-dragStartX); });
 function rel(){ pointerActive=false; if(!keyL&&!keyR) steerTarget=0; }
 addEventListener("pointerup",rel); addEventListener("pointercancel",rel);
 addEventListener("keydown",e=>{ if(e.key==="ArrowLeft"||e.key==="a"){keyL=true;steerTarget=-1;}
